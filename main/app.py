@@ -6,15 +6,15 @@ st.set_page_config(
 )
 
 st.title("Deep Learning Image Classifier")
-st.write("Platform untuk memahami cara kerja CNN dan Transfer Learning dalam klasifikasi gambar")
+st.write("A platform to understand how CNN and Transfer Learning work for image classification.")
 
 st.markdown("---")
 
-st.header("Deep Learning visualization")
+st.header("Deep Learning Visualization")
 
 st.write("""
-dirancang untuk membantu memahami konsep Deep Learning melalui visualisasi interaktif.
-Anda dapat melihat bagaimana model neural network memproses gambar dan membuat prediksi. semoga mengerti ya adik adik hehe
+This application is designed to help you understand Deep Learning concepts through interactive visualizations.
+You can see how neural network models process images and make predictions.
 """)
 
 col1, col2 = st.columns(2)
@@ -22,29 +22,29 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("CNN Classification")
     st.write("**Dataset:** Rock Paper Scissors")
-    st.write("**Kelas:** Rock, Paper, Scissors")
-    st.write("**Ukuran Input:** 150x150 pixels")
+    st.write("**Classes:** Rock, Paper, Scissors")
+    st.write("**Input Size:** 150x150 pixels")
     st.write("""
-    Pada halaman ini Anda akan belajar:
-    - Bagaimana CNN memproses gambar
-    - Cara kerja convolution dan pooling
-    - Proses ekstraksi fitur
-    - Prediksi berdasarkan feature maps
+    On this page, you will learn:
+    - How a CNN processes images
+    - How convolution and pooling work
+    - How feature extraction happens
+    - How predictions are made based on feature maps
     """)
 
 with col2:
     st.subheader("MobileNetV2 Transfer Learning")
     st.write("**Dataset:** Hyena vs Cheetah")
-    st.write("**Kelas:** Hyena, Cheetah")
-    st.write("**Ukuran Input:** 224x224 pixels")
+    st.write("**Classes:** Hyena, Cheetah")
+    st.write("**Input Size:** 224x224 pixels")
     st.write("""
-    Pada halaman ini Anda akan belajar:
-    - Konsep Transfer Learning
-    - Pre-trained model ImageNet
-    - Feature extraction process
-    - Fine-tuning untuk task baru
+    On this page, you will learn:
+    - The concept of Transfer Learning
+    - How a pre-trained ImageNet model works
+    - The feature extraction process
+    - How fine-tuning adapts the model to a new task
     """)
 
 st.markdown("---")
 
-st.info("Pilih salah satu model dari sidebar untuk memulai")
+st.info("Select one of the models from the sidebar to get started.")

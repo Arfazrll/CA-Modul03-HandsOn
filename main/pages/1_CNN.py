@@ -7,74 +7,74 @@ from scipy.ndimage import convolve
 import os
 import requests
 
-st.set_page_config(page_title="CNN Classification", layout="wide")
-
 st.title("CNN Classification: Rock Paper Scissors")
 st.write("Memahami bagaimana Convolutional Neural Network memproses dan mengklasifikasi gambar")
+
 
 def download_model(url, filename):
     if os.path.exists(filename):
         return True
-    
     try:
-        with st.spinner(f"Downloading model {filename}... Mohon tunggu (sekitar 15-20 MB)"):
-            response = requests.get(url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
-            
-            with open(filename, 'wb') as file:
-                downloaded = 0
-                for chunk in response.iter_content(chunk_size=8192):
+        headers = {"Accept": "application/octet-stream"}
+        with st.spinner(f"Mengunduh model {filename} dari GitHub Releases..."):
+            response = requests.get(url, headers=headers, stream=True)
+            response.raise_for_status()
+            with open(filename, "wb") as file:
+                for chunk in response.iter_content(chunk_size=1024 * 256):
                     if chunk:
                         file.write(chunk)
-                        downloaded += len(chunk)
-            
-            if os.path.exists(filename):
-                return True
+        if os.path.getsize(filename) < 500000:
+            st.error("File model terlalu kecil, kemungkinan corrupt. File dihapus.")
+            os.remove(filename)
             return False
+        return True
     except Exception as e:
-        st.error(f"Error downloading model: {str(e)}")
+        st.error(f"Gagal mengunduh model: {e}")
         return False
+
 
 @st.cache_resource
 def load_model():
     model_url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/modelresultCNN/rock_paper_scissors_model.h5"
-    model_path = 'rock_paper_scissors_model.h5'
-    
+    model_path = "rock_paper_scissors_model.h5"
+
     if not os.path.exists(model_path):
-        st.info("Model belum tersedia. Downloading dari GitHub...")
-        if not download_model(model_url, model_path):
-            st.error("Gagal download model. Menggunakan model tanpa training.")
+        st.info("Model CNN belum tersedia secara lokal. Mengunduh dari GitHub Releases.")
+        ok = download_model(model_url, model_path)
+        if not ok:
+            st.warning("Model tidak berhasil diunduh. Menggunakan arsitektur CNN tanpa bobot terlatih.")
             model = tf.keras.Sequential([
-                tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
-                tf.keras.layers.MaxPooling2D(2,2),
-                tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
-                tf.keras.layers.MaxPooling2D(2,2),
-                tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
-                tf.keras.layers.MaxPooling2D(2,2),
+                tf.keras.layers.Conv2D(32, (3, 3), activation="relu", input_shape=(150, 150, 3)),
+                tf.keras.layers.MaxPooling2D(2, 2),
+                tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+                tf.keras.layers.MaxPooling2D(2, 2),
+                tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
+                tf.keras.layers.MaxPooling2D(2, 2),
                 tf.keras.layers.Flatten(),
                 tf.keras.layers.Dropout(0.5),
-                tf.keras.layers.Dense(512, activation='relu'),
-                tf.keras.layers.Dense(3, activation='softmax')
+                tf.keras.layers.Dense(512, activation="relu"),
+                tf.keras.layers.Dense(3, activation="softmax")
             ])
             return model, False
-    
+
     try:
         model = tf.keras.models.load_model(model_path)
-        st.success("Model CNN berhasil di-load!")
+        st.success("Model CNN berhasil di-load.")
         return model, True
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
+        st.error(f"Error saat load model: {e}")
+        st.warning("Menggunakan arsitektur CNN tanpa bobot terlatih.")
         model = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
-            tf.keras.layers.MaxPooling2D(2,2),
-            tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
-            tf.keras.layers.MaxPooling2D(2,2),
-            tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
-            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Conv2D(32, (3, 3), activation="relu", input_shape=(150, 150, 3)),
+            tf.keras.layers.MaxPooling2D(2, 2),
+            tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+            tf.keras.layers.MaxPooling2D(2, 2),
+            tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
+            tf.keras.layers.MaxPooling2D(2, 2),
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(512, activation='relu'),
-            tf.keras.layers.Dense(3, activation='softmax')
+            tf.keras.layers.Dense(512, activation="relu"),
+            tf.keras.layers.Dense(3, activation="softmax")
         ])
         return model, False
 

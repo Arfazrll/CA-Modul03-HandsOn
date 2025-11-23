@@ -12,75 +12,71 @@ st.set_page_config(page_title="MobileNetV2 Transfer Learning", layout="wide")
 st.title("Transfer Learning: MobileNetV2")
 st.write("Memahami bagaimana Transfer Learning menggunakan model pre-trained untuk task baru")
 
+
 def download_model(url, filename):
     if os.path.exists(filename):
         return True
-    
     try:
-        with st.spinner(f"Downloading model {filename}... Mohon tunggu (sekitar 10-15 MB)"):
-            response = requests.get(url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
-            
-            with open(filename, 'wb') as file:
-                downloaded = 0
-                for chunk in response.iter_content(chunk_size=8192):
+        headers = {"Accept": "application/octet-stream"}
+        with st.spinner(f"Mengunduh model {filename} dari GitHub Releases..."):
+            response = requests.get(url, headers=headers, stream=True)
+            response.raise_for_status()
+            with open(filename, "wb") as file:
+                for chunk in response.iter_content(chunk_size=1024 * 256):
                     if chunk:
                         file.write(chunk)
-                        downloaded += len(chunk)
-            
-            if os.path.exists(filename):
-                return True
+        if os.path.getsize(filename) < 500000:
+            st.error("File model terlalu kecil, kemungkinan corrupt. File dihapus.")
+            os.remove(filename)
             return False
+        return True
     except Exception as e:
         st.error(f"Error downloading model: {str(e)}")
         return False
 
+
 @st.cache_resource
 def load_model():
     model_url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/modelresultNetv2/best_transfer_model.keras"
-    model_path = 'best_transfer_model.keras'
-    
+    model_path = "best_transfer_model.keras"
+
     if not os.path.exists(model_path):
-        st.info("Model belum tersedia. Downloading dari GitHub...")
+        st.info("Model belum tersedia secara lokal. Mengunduh dari GitHub Releases.")
         if not download_model(model_url, model_path):
             st.error("Gagal download model. Menggunakan model tanpa fine-tuning.")
             base_model = tf.keras.applications.MobileNetV2(
                 input_shape=(224, 224, 3),
                 include_top=False,
-                weights='imagenet'
+                weights="imagenet"
             )
             base_model.trainable = False
-            
             inputs = tf.keras.Input(shape=(224, 224, 3))
             x = base_model(inputs, training=False)
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            x = tf.keras.layers.Dense(128, activation='relu')(x)
+            x = tf.keras.layers.Dense(128, activation="relu")(x)
             x = tf.keras.layers.Dropout(0.5)(x)
-            outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
-            
+            outputs = tf.keras.layers.Dense(2, activation="softmax")(x)
             model = tf.keras.Model(inputs, outputs)
             return model, False
-    
+
     try:
         model = tf.keras.models.load_model(model_path)
-        st.success("Model MobileNetV2 berhasil di-load!")
+        st.success("Model MobileNetV2 berhasil di-load.")
         return model, True
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         base_model = tf.keras.applications.MobileNetV2(
             input_shape=(224, 224, 3),
             include_top=False,
-            weights='imagenet'
+            weights="imagenet"
         )
         base_model.trainable = False
-        
         inputs = tf.keras.Input(shape=(224, 224, 3))
         x = base_model(inputs, training=False)
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
-        x = tf.keras.layers.Dense(128, activation='relu')(x)
+        x = tf.keras.layers.Dense(128, activation="relu")(x)
         x = tf.keras.layers.Dropout(0.5)(x)
-        outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
-        
+        outputs = tf.keras.layers.Dense(2, activation="softmax")(x)
         model = tf.keras.Model(inputs, outputs)
         return model, False
 

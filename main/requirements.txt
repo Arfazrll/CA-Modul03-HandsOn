@@ -1,8 +1,7 @@
-streamlit==1.31.0
-tensorflow==2.15.0
-numpy==1.24.3
-Pillow==10.2.0
-plotly==5.18.0
-opencv-python-headless==4.9.0.80
-scipy==1.11.4
-requests==2.31.0
+streamlit>=1.28.0,<2.0.0
+tensorflow>=2.14.0,<2.16.0
+numpy>=1.24.0,<1.27.0
+Pillow>=10.0.0,<11.0.0
+plotly>=5.17.0,<6.0.0
+scipy>=1.11.0,<1.13.0
+requests>=2.31.0,<3.0.0

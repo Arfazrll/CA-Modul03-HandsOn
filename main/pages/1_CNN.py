@@ -5,47 +5,78 @@ from PIL import Image
 import plotly.graph_objects as go
 from scipy.ndimage import convolve
 import os
+import requests
 
 st.set_page_config(page_title="CNN Classification", layout="wide")
 
 st.title("CNN Classification: Rock Paper Scissors")
 st.write("Memahami bagaimana Convolutional Neural Network memproses dan mengklasifikasi gambar")
 
+def download_model(url, filename):
+    if os.path.exists(filename):
+        return True
+    
+    try:
+        with st.spinner(f"Downloading model {filename}... Mohon tunggu (sekitar 15-20 MB)"):
+            response = requests.get(url, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(filename, 'wb') as file:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        downloaded += len(chunk)
+            
+            if os.path.exists(filename):
+                return True
+            return False
+    except Exception as e:
+        st.error(f"Error downloading model: {str(e)}")
+        return False
+
 @st.cache_resource
 def load_model():
+    model_url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/modelresultCNN/rock_paper_scissors_model.h5"
     model_path = 'rock_paper_scissors_model.h5'
     
-    if os.path.exists(model_path):
-        try:
-            model = tf.keras.models.load_model(model_path)
-            st.success("Model berhasil di-load dari file!")
-            return model, True
-        except:
-            st.warning("Model file ada tapi gagal di-load. Menggunakan model tanpa training.")
+    if not os.path.exists(model_path):
+        st.info("Model belum tersedia. Downloading dari GitHub...")
+        if not download_model(model_url, model_path):
+            st.error("Gagal download model. Menggunakan model tanpa training.")
+            model = tf.keras.Sequential([
+                tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
+                tf.keras.layers.MaxPooling2D(2,2),
+                tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+                tf.keras.layers.MaxPooling2D(2,2),
+                tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
+                tf.keras.layers.MaxPooling2D(2,2),
+                tf.keras.layers.Flatten(),
+                tf.keras.layers.Dropout(0.5),
+                tf.keras.layers.Dense(512, activation='relu'),
+                tf.keras.layers.Dense(3, activation='softmax')
+            ])
+            return model, False
     
-    model = tf.keras.Sequential([
-        tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(512, activation='relu'),
-        tf.keras.layers.Dense(3, activation='softmax')
-    ])
-    
-    st.error("""
-    ⚠️ MODEL BELUM DI-TRAIN!
-    
-    Model ini hanya arsitektur kosong. Untuk prediksi yang akurat:
-    1. Train model di Colab menggunakan notebook ClassificationCNN.ipynb
-    2. Save model dengan: model.save('rock_paper_scissors_model.h5')
-    3. Upload file 'rock_paper_scissors_model.h5' ke folder aplikasi ini
-    """)
-    
-    return model, False
+    try:
+        model = tf.keras.models.load_model(model_path)
+        st.success("Model CNN berhasil di-load!")
+        return model, True
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        model = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(512, activation='relu'),
+            tf.keras.layers.Dense(3, activation='softmax')
+        ])
+        return model, False
 
 def preprocess_image(image):
     img_resized = image.resize((150, 150))
@@ -64,30 +95,12 @@ class_names = ['paper', 'rock', 'scissors']
 
 st.markdown("---")
 
-if not is_trained:
+if is_trained:
+    st.success("Model sudah siap digunakan!")
+else:
     st.warning("""
-    ### Cara Mendapatkan Model yang Sudah Di-train:
-    
-    1. Buka notebook **ClassificationCNN.ipynb** di Google Colab
-    2. Jalankan semua cell sampai training selesai
-    3. Tambahkan cell baru di akhir dengan kode:
-    ```python
-    model.save('rock_paper_scissors_model.h5')
-    files.download('rock_paper_scissors_model.h5')
-    ```
-    4. Download file yang muncul
-    5. Upload file tersebut ke folder tempat app.py berada
-    6. Restart aplikasi Streamlit
-    """)
-    
-    st.info("""
-    **Untuk saat ini, aplikasi tetap bisa digunakan untuk mempelajari:**
-    - RGB Channels
-    - Convolution operations  
-    - Feature maps visualization
-    - Arsitektur CNN
-    
-    Namun prediksi akan random karena model belum di-train.
+    Model belum tersedia atau gagal di-load. 
+    Aplikasi akan tetap berfungsi untuk pembelajaran visualisasi, namun prediksi akan random.
     """)
 
 st.markdown("---")
@@ -202,7 +215,7 @@ if uploaded_file is not None:
     if is_trained:
         button_label = "Jalankan Prediksi"
     else:
-        button_label = "Coba Prediksi (Model Belum Di-train)"
+        button_label = "Coba Prediksi (Model Belum Tersedia)"
     
     if st.button(button_label, type="primary"):
         with st.spinner("Memproses gambar melalui CNN..."):
@@ -216,7 +229,7 @@ if uploaded_file is not None:
             st.success(f"Prediksi: **{predicted_class.upper()}** dengan confidence **{confidence:.2f}%**")
         else:
             st.warning(f"Prediksi (RANDOM): **{predicted_class.upper()}** - Confidence: {confidence:.2f}%")
-            st.error("⚠️ Prediksi ini TIDAK AKURAT karena model belum di-train! Angka ini random.")
+            st.error("⚠️ Prediksi ini TIDAK AKURAT karena model belum tersedia atau gagal di-load!")
         
         st.subheader("Distribusi Probabilitas")
         if is_trained:

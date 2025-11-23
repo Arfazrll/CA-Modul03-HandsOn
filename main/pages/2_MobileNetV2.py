@@ -5,52 +5,84 @@ from PIL import Image
 import plotly.graph_objects as go
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 import os
+import requests
 
 st.set_page_config(page_title="MobileNetV2 Transfer Learning", layout="wide")
 
 st.title("Transfer Learning: MobileNetV2")
 st.write("Memahami bagaimana Transfer Learning menggunakan model pre-trained untuk task baru")
 
+def download_model(url, filename):
+    if os.path.exists(filename):
+        return True
+    
+    try:
+        with st.spinner(f"Downloading model {filename}... Mohon tunggu (sekitar 10-15 MB)"):
+            response = requests.get(url, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(filename, 'wb') as file:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        downloaded += len(chunk)
+            
+            if os.path.exists(filename):
+                return True
+            return False
+    except Exception as e:
+        st.error(f"Error downloading model: {str(e)}")
+        return False
+
 @st.cache_resource
 def load_model():
+    model_url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/modelresultNetv2/best_transfer_model.keras"
     model_path = 'best_transfer_model.keras'
     
-    if os.path.exists(model_path):
-        try:
-            model = tf.keras.models.load_model(model_path)
-            st.success("Model MobileNetV2 berhasil di-load!")
-            return model, True
-        except Exception as e:
-            st.warning(f"Model file ada tapi gagal di-load: {str(e)}")
+    if not os.path.exists(model_path):
+        st.info("Model belum tersedia. Downloading dari GitHub...")
+        if not download_model(model_url, model_path):
+            st.error("Gagal download model. Menggunakan model tanpa fine-tuning.")
+            base_model = tf.keras.applications.MobileNetV2(
+                input_shape=(224, 224, 3),
+                include_top=False,
+                weights='imagenet'
+            )
+            base_model.trainable = False
+            
+            inputs = tf.keras.Input(shape=(224, 224, 3))
+            x = base_model(inputs, training=False)
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            x = tf.keras.layers.Dense(128, activation='relu')(x)
+            x = tf.keras.layers.Dropout(0.5)(x)
+            outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
+            
+            model = tf.keras.Model(inputs, outputs)
+            return model, False
     
-    base_model = tf.keras.applications.MobileNetV2(
-        input_shape=(224, 224, 3),
-        include_top=False,
-        weights='imagenet'
-    )
-    base_model.trainable = False
-    
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    x = base_model(inputs, training=False)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    x = tf.keras.layers.Dense(128, activation='relu')(x)
-    x = tf.keras.layers.Dropout(0.5)(x)
-    outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
-    
-    model = tf.keras.Model(inputs, outputs)
-    
-    st.error("""
-    ⚠️ MODEL BELUM DI-TRAIN UNTUK HYENA VS CHEETAH!
-    
-    Model ini hanya menggunakan pre-trained ImageNet weights tanpa fine-tuning untuk Hyena/Cheetah.
-    
-    Untuk prediksi yang akurat:
-    1. Train model di Colab menggunakan notebook MobileNetv2.ipynb
-    2. Download file 'best_transfer_model.keras' yang di-save otomatis
-    3. Upload file tersebut ke folder aplikasi ini
-    """)
-    
-    return model, False
+    try:
+        model = tf.keras.models.load_model(model_path)
+        st.success("Model MobileNetV2 berhasil di-load!")
+        return model, True
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        base_model = tf.keras.applications.MobileNetV2(
+            input_shape=(224, 224, 3),
+            include_top=False,
+            weights='imagenet'
+        )
+        base_model.trainable = False
+        
+        inputs = tf.keras.Input(shape=(224, 224, 3))
+        x = base_model(inputs, training=False)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        x = tf.keras.layers.Dense(128, activation='relu')(x)
+        x = tf.keras.layers.Dropout(0.5)(x)
+        outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
+        
+        model = tf.keras.Model(inputs, outputs)
+        return model, False
 
 def preprocess_mobilenetv2(image):
     img_resized = image.resize((224, 224))
@@ -118,30 +150,12 @@ with col2:
 
 st.markdown("---")
 
-if not is_trained:
+if is_trained:
+    st.success("Model sudah siap digunakan!")
+else:
     st.warning("""
-    ### Cara Mendapatkan Model yang Sudah Di-train:
-    
-    1. Buka notebook **MobileNetv2.ipynb** di Google Colab
-    2. Jalankan semua cell sampai training selesai
-    3. File 'best_transfer_model.keras' akan otomatis ter-save
-    4. Download file tersebut dengan menambahkan cell:
-    ```python
-    from google.colab import files
-    files.download('best_transfer_model.keras')
-    ```
-    5. Upload file ke folder tempat app.py berada
-    6. Restart aplikasi Streamlit
-    """)
-    
-    st.info("""
-    **Untuk saat ini, aplikasi tetap bisa digunakan untuk mempelajari:**
-    - Transfer Learning concept
-    - RGB analysis dan preprocessing
-    - Feature extraction dari MobileNetV2
-    - Arsitektur model
-    
-    Namun prediksi akan tidak akurat karena model belum di-fine-tune untuk Hyena/Cheetah.
+    Model belum di-fine-tune untuk Hyena vs Cheetah. 
+    Aplikasi akan tetap berfungsi untuk pembelajaran, namun prediksi mungkin tidak akurat.
     """)
 
 st.markdown("---")
@@ -165,6 +179,7 @@ if uploaded_file is not None:
         st.caption("Ukuran: 224x224 pixels")
         st.caption(f"Original range: [0, 255]")
         st.caption(f"Preprocessed range: [{img_preprocessed.min():.2f}, {img_preprocessed.max():.2f}]")
+        st.info("MobileNetV2 menggunakan preprocessing khusus (bukan hanya /255)")
     
     st.markdown("---")
     
@@ -254,7 +269,7 @@ if uploaded_file is not None:
     if is_trained:
         button_label = "Jalankan Prediksi dengan MobileNetV2"
     else:
-        button_label = "Coba Prediksi (Model Belum Di-train untuk Hyena/Cheetah)"
+        button_label = "Coba Prediksi (Model Belum Di-fine-tune)"
     
     if st.button(button_label, type="primary"):
         with st.spinner("Memproses gambar melalui MobileNetV2..."):
@@ -267,8 +282,8 @@ if uploaded_file is not None:
         if is_trained:
             st.success(f"Prediksi: **{predicted_class}** dengan confidence **{confidence:.2f}%**")
         else:
-            st.warning(f"Prediksi (TIDAK AKURAT): **{predicted_class}** - Confidence: {confidence:.2f}%")
-            st.error("⚠️ Prediksi ini TIDAK AKURAT karena model belum di-fine-tune untuk Hyena vs Cheetah!")
+            st.warning(f"Prediksi (MUNGKIN TIDAK AKURAT): **{predicted_class}** - Confidence: {confidence:.2f}%")
+            st.error("⚠️ Model belum di-fine-tune untuk Hyena vs Cheetah. Prediksi mungkin tidak reliable!")
         
         st.subheader("Distribusi Probabilitas")
         if is_trained:
@@ -431,7 +446,6 @@ if uploaded_file is not None:
             Hasil: Efisien untuk mobile dan embedded devices
             """)
         
-        st.markdown("---")
         
 
 else:
@@ -500,4 +514,83 @@ else:
     st.write("""
     Model MobileNetV2 yang sudah dilatih dapat mengenali perbedaan subtle ini 
     karena sudah memiliki knowledge tentang tekstur, pola, dan bentuk dari training ImageNet.
+    """)
+st.write("""
+**Transfer Learning** adalah teknik machine learning dimana kita menggunakan model yang sudah dilatih pada dataset besar 
+(seperti ImageNet dengan 14 juta gambar) dan mengadaptasinya untuk task baru dengan dataset lebih kecil.
+
+**Keuntungan:**
+- Tidak perlu melatih model dari nol
+- Lebih cepat dan efisien
+- Bekerja baik dengan dataset kecil
+- Memanfaatkan knowledge yang sudah dipelajari
+""")
+
+st.markdown("---")
+
+st.header("MobileNetV2 Pre-trained pada ImageNet")
+st.write("""
+**MobileNetV2** adalah model yang sudah dilatih untuk mengenali 1000 kategori objek dari dataset ImageNet.
+Model ini telah belajar mengenali:
+- Fitur dasar: Garis, tepi, warna, tekstur
+- Fitur menengah: Bentuk, pola
+- Fitur kompleks: Bagian objek, kombinasi bentuk
+
+Kita akan menggunakan knowledge ini untuk membedakan Cheetah dan Hyena.
+""")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.info("""
+    **Layer yang Di-freeze (Tidak Dilatih):**
+    - Base MobileNetV2
+    - Sudah bisa ekstrak fitur umum
+    - Parameter: 2.2 juta
+    """)
+
+with col2:
+    if is_trained:
+        st.success("""
+        **Layer yang Dilatih:**
+        - Global Average Pooling
+        - Dense Layer (128 neurons)
+        - Output Layer (2 classes)
+        - Model SUDAH dilatih!
+        """)
+    else:
+        st.warning("""
+        **Layer yang Perlu Dilatih:**
+        - Global Average Pooling
+        - Dense Layer (128 neurons)
+        - Output Layer (2 classes)
+        - ⚠️ Model BELUM dilatih!
+        """)
+
+st.markdown("---")
+
+if not is_trained:
+    st.warning("""
+    ### Cara Mendapatkan Model yang Sudah Di-train:
+    
+    1. Buka notebook **MobileNetv2.ipynb** di Google Colab
+    2. Jalankan semua cell sampai training selesai
+    3. File 'best_transfer_model.keras' akan otomatis ter-save
+    4. Download file tersebut dengan menambahkan cell:
+    ```python
+    from google.colab import files
+    files.download('best_transfer_model.keras')
+    ```
+    5. Upload file ke folder tempat app.py berada
+    6. Restart aplikasi Streamlit
+    """)
+    
+    st.info("""
+    **Untuk saat ini, aplikasi tetap bisa digunakan untuk mempelajari:**
+    - Transfer Learning concept
+    - RGB analysis dan preprocessing
+    - Feature extraction dari MobileNetV2
+    - Arsitektur model
+    
+    Namun prediksi akan tidak akurat karena model belum di-fine-tune untuk Hyena/Cheetah.
     """)

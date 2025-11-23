@@ -10,11 +10,11 @@ st.write("Platform untuk memahami cara kerja CNN dan Transfer Learning dalam kla
 
 st.markdown("---")
 
-st.header("Tentang Aplikasi")
+st.header("Deep Learning visualization")
 
 st.write("""
-Aplikasi ini dirancang untuk membantu Anda memahami konsep Deep Learning melalui visualisasi interaktif.
-Anda dapat melihat bagaimana model neural network memproses gambar dan membuat prediksi.
+dirancang untuk membantu memahami konsep Deep Learning melalui visualisasi interaktif.
+Anda dapat melihat bagaimana model neural network memproses gambar dan membuat prediksi. semoga mengerti ya adik adik hehe
 """)
 
 col1, col2 = st.columns(2)

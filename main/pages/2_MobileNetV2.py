@@ -12,73 +12,85 @@ st.set_page_config(page_title="MobileNetV2 Transfer Learning", layout="wide")
 st.title("Transfer Learning: MobileNetV2")
 st.write("Memahami bagaimana Transfer Learning menggunakan model pre-trained untuk task baru")
 
-
 def download_model(url, filename):
     if os.path.exists(filename):
         return True
     try:
-        headers = {"Accept": "application/octet-stream"}
-        with st.spinner(f"Mengunduh model {filename} dari GitHub Releases..."):
-            response = requests.get(url, headers=headers, stream=True)
+        with st.spinner(f"Downloading model {filename}..."):
+            response = requests.get(url, stream=True, timeout=120)
             response.raise_for_status()
-            with open(filename, "wb") as file:
-                for chunk in response.iter_content(chunk_size=1024 * 256):
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(filename, 'wb') as file:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         file.write(chunk)
-        if os.path.getsize(filename) < 500000:
-            st.error("File model terlalu kecil, kemungkinan corrupt. File dihapus.")
-            os.remove(filename)
-            return False
-        return True
+                        downloaded += len(chunk)
+            
+            if os.path.getsize(filename) < 1000000:
+                st.error("Downloaded file too small, possibly corrupted")
+                os.remove(filename)
+                return False
+            return True
     except Exception as e:
-        st.error(f"Error downloading model: {str(e)}")
+        st.error(f"Download failed: {str(e)}")
+        if os.path.exists(filename):
+            os.remove(filename)
         return False
-
 
 @st.cache_resource
 def load_model():
     model_url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/modelresultNetv2/best_transfer_model.keras"
-    model_path = "best_transfer_model.keras"
-
+    model_path = 'best_transfer_model.keras'
+    
     if not os.path.exists(model_path):
-        st.info("Model belum tersedia secara lokal. Mengunduh dari GitHub Releases.")
+        st.info("Model not found locally. Downloading from GitHub...")
         if not download_model(model_url, model_path):
-            st.error("Gagal download model. Menggunakan model tanpa fine-tuning.")
-            base_model = tf.keras.applications.MobileNetV2(
-                input_shape=(224, 224, 3),
-                include_top=False,
-                weights="imagenet"
-            )
-            base_model.trainable = False
-            inputs = tf.keras.Input(shape=(224, 224, 3))
-            x = base_model(inputs, training=False)
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            x = tf.keras.layers.Dense(128, activation="relu")(x)
-            x = tf.keras.layers.Dropout(0.5)(x)
-            outputs = tf.keras.layers.Dense(2, activation="softmax")(x)
-            model = tf.keras.Model(inputs, outputs)
-            return model, False
-
+            return create_untrained_model(), False
+    
     try:
-        model = tf.keras.models.load_model(model_path)
-        st.success("Model MobileNetV2 berhasil di-load.")
+        model = tf.keras.models.load_model(model_path, compile=False)
+        model.compile(
+            loss='categorical_crossentropy',
+            optimizer='adam',
+            metrics=['accuracy']
+        )
+        st.success("MobileNetV2 model loaded successfully")
         return model, True
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        base_model = tf.keras.applications.MobileNetV2(
-            input_shape=(224, 224, 3),
-            include_top=False,
-            weights="imagenet"
-        )
-        base_model.trainable = False
-        inputs = tf.keras.Input(shape=(224, 224, 3))
-        x = base_model(inputs, training=False)
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
-        x = tf.keras.layers.Dense(128, activation="relu")(x)
-        x = tf.keras.layers.Dropout(0.5)(x)
-        outputs = tf.keras.layers.Dense(2, activation="softmax")(x)
-        model = tf.keras.Model(inputs, outputs)
-        return model, False
+        if os.path.exists(model_path):
+            try:
+                os.remove(model_path)
+                st.info("Corrupted file removed. Please refresh to retry download.")
+            except:
+                pass
+        return create_untrained_model(), False
+
+def create_untrained_model():
+    st.warning("Using untrained transfer learning model. Predictions will not be accurate.")
+    base_model = tf.keras.applications.MobileNetV2(
+        input_shape=(224, 224, 3),
+        include_top=False,
+        weights='imagenet'
+    )
+    base_model.trainable = False
+    
+    inputs = tf.keras.Input(shape=(224, 224, 3))
+    x = base_model(inputs, training=False)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.Dense(128, activation='relu')(x)
+    x = tf.keras.layers.Dropout(0.5)(x)
+    outputs = tf.keras.layers.Dense(2, activation='softmax')(x)
+    
+    model = tf.keras.Model(inputs, outputs)
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer='adam',
+        metrics=['accuracy']
+    )
+    return model
 
 def preprocess_mobilenetv2(image):
     img_resized = image.resize((224, 224))
@@ -91,73 +103,36 @@ class_names = ['Cheetah', 'Hyena']
 
 st.markdown("---")
 
-st.header("Apa itu Transfer Learning?")
-st.write("""
-**Transfer Learning** adalah teknik machine learning dimana kita menggunakan model yang sudah dilatih pada dataset besar 
-(seperti ImageNet dengan 14 juta gambar) dan mengadaptasinya untuk task baru dengan dataset lebih kecil.
-
-**Keuntungan:**
-- Tidak perlu melatih model dari nol
-- Lebih cepat dan efisien
-- Bekerja baik dengan dataset kecil
-- Memanfaatkan knowledge yang sudah dipelajari
-""")
+st.header("What is Transfer Learning?")
+st.write("Transfer Learning is a machine learning technique where we use a model already trained on a large dataset like ImageNet with 14 million images and adapt it for a new task with a smaller dataset. Benefits: No need to train from scratch, faster and more efficient, works well with small datasets, leverages previously learned knowledge.")
 
 st.markdown("---")
 
-st.header("MobileNetV2 Pre-trained pada ImageNet")
-st.write("""
-**MobileNetV2** adalah model yang sudah dilatih untuk mengenali 1000 kategori objek dari dataset ImageNet.
-Model ini telah belajar mengenali:
-- Fitur dasar: Garis, tepi, warna, tekstur
-- Fitur menengah: Bentuk, pola
-- Fitur kompleks: Bagian objek, kombinasi bentuk
-
-Kita akan menggunakan knowledge ini untuk membedakan Cheetah dan Hyena.
-""")
+st.header("MobileNetV2 Pre-trained on ImageNet")
+st.write("MobileNetV2 is a model already trained to recognize 1000 object categories from the ImageNet dataset. This model has learned to recognize: Basic features like lines, edges, colors and textures, Intermediate features like shapes and patterns, Complex features like object parts and shape combinations. We will use this knowledge to distinguish between Cheetahs and Hyenas.")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.info("""
-    **Layer yang Di-freeze (Tidak Dilatih):**
-    - Base MobileNetV2
-    - Sudah bisa ekstrak fitur umum
-    - Parameter: 2.2 juta
-    """)
+    st.info("Frozen Layers (Not Trained): Base MobileNetV2, Already capable of extracting general features, Parameters: 2.2 million")
 
 with col2:
     if is_trained:
-        st.success("""
-        **Layer yang Dilatih:**
-        - Global Average Pooling
-        - Dense Layer (128 neurons)
-        - Output Layer (2 classes)
-        - Model SUDAH dilatih!
-        """)
+        st.success("Trained Layers: Global Average Pooling, Dense Layer 128 neurons, Output Layer 2 classes, Model IS TRAINED")
     else:
-        st.warning("""
-        **Layer yang Perlu Dilatih:**
-        - Global Average Pooling
-        - Dense Layer (128 neurons)
-        - Output Layer (2 classes)
-        - ⚠️ Model BELUM dilatih!
-        """)
+        st.warning("Layers to Train: Global Average Pooling, Dense Layer 128 neurons, Output Layer 2 classes, Model NOT YET TRAINED")
 
 st.markdown("---")
 
 if is_trained:
-    st.success("Model sudah siap digunakan!")
+    st.success("Model ready for accurate predictions")
 else:
-    st.warning("""
-    Model belum di-fine-tune untuk Hyena vs Cheetah. 
-    Aplikasi akan tetap berfungsi untuk pembelajaran, namun prediksi mungkin tidak akurat.
-    """)
+    st.warning("Model not fine-tuned for Hyena vs Cheetah. Application still functions for learning but predictions may not be accurate.")
 
 st.markdown("---")
 
-st.header("Upload Gambar untuk Prediksi")
-uploaded_file = st.file_uploader("Pilih gambar Cheetah atau Hyena", type=['jpg', 'jpeg', 'png'])
+st.header("Upload Image for Prediction")
+uploaded_file = st.file_uploader("Choose Cheetah or Hyena image", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -165,24 +140,22 @@ if uploaded_file is not None:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Gambar Original")
+        st.subheader("Original Image")
         st.image(image, use_column_width=True)
     
     with col2:
-        st.subheader("Gambar Setelah Preprocessing")
+        st.subheader("After Preprocessing")
         img_resized, img_array, img_preprocessed = preprocess_mobilenetv2(image)
         st.image(img_resized, use_column_width=True)
-        st.caption("Ukuran: 224x224 pixels")
+        st.caption("Size: 224x224 pixels")
         st.caption(f"Original range: [0, 255]")
         st.caption(f"Preprocessed range: [{img_preprocessed.min():.2f}, {img_preprocessed.max():.2f}]")
-        st.info("MobileNetV2 menggunakan preprocessing khusus (bukan hanya /255)")
+        st.info("MobileNetV2 uses special preprocessing not just division by 255")
     
     st.markdown("---")
     
-    st.header("Analisis RGB Channels")
-    st.write("""
-    MobileNetV2 menerima input 3 channel (RGB). Mari lihat distribusi intensitas warna pada gambar Anda.
-    """)
+    st.header("RGB Channel Analysis")
+    st.write("MobileNetV2 accepts 3-channel RGB input. See the color intensity distribution in your image.")
     
     img_display = np.array(img_resized)
     
@@ -223,7 +196,7 @@ if uploaded_file is not None:
     
     st.markdown("---")
     
-    st.header("Distribusi Intensitas Pixel")
+    st.header("Pixel Intensity Distribution")
     
     fig_hist = go.Figure()
     fig_hist.add_trace(go.Histogram(
@@ -250,25 +223,22 @@ if uploaded_file is not None:
     
     fig_hist.update_layout(
         barmode='overlay',
-        xaxis_title="Intensitas Pixel (0-255)",
-        yaxis_title="Frekuensi",
+        xaxis_title="Pixel Intensity (0-255)",
+        yaxis_title="Frequency",
         height=400
     )
     
     st.plotly_chart(fig_hist, use_column_width=True)
-    st.caption("Histogram menunjukkan distribusi intensitas untuk setiap channel warna")
+    st.caption("Histogram shows intensity distribution for each color channel")
     
     st.markdown("---")
     
-    st.header("Prediksi dan Klasifikasi")
+    st.header("Prediction and Classification")
     
-    if is_trained:
-        button_label = "Jalankan Prediksi dengan MobileNetV2"
-    else:
-        button_label = "Coba Prediksi (Model Belum Di-fine-tune)"
+    button_label = "Run Prediction with MobileNetV2" if is_trained else "Try Prediction (Model Not Fine-tuned)"
     
     if st.button(button_label, type="primary"):
-        with st.spinner("Memproses gambar melalui MobileNetV2..."):
+        with st.spinner("Processing image through MobileNetV2..."):
             img_input = np.expand_dims(img_preprocessed, axis=0)
             predictions = model.predict(img_input, verbose=0)
             predicted_idx = np.argmax(predictions[0])
@@ -276,19 +246,13 @@ if uploaded_file is not None:
             confidence = predictions[0][predicted_idx] * 100
         
         if is_trained:
-            st.success(f"Prediksi: **{predicted_class}** dengan confidence **{confidence:.2f}%**")
+            st.success(f"Prediction: **{predicted_class}** with confidence **{confidence:.2f}%**")
         else:
-            st.warning(f"Prediksi (MUNGKIN TIDAK AKURAT): **{predicted_class}** - Confidence: {confidence:.2f}%")
-            st.error("⚠️ Model belum di-fine-tune untuk Hyena vs Cheetah. Prediksi mungkin tidak reliable!")
+            st.warning(f"Prediction (MAY NOT BE ACCURATE): **{predicted_class}** - Confidence: {confidence:.2f}%")
+            st.error("Model not fine-tuned for Hyena vs Cheetah. Prediction may not be reliable")
         
-        st.subheader("Distribusi Probabilitas")
-        if is_trained:
-            st.write("""
-            Model memberikan probabilitas untuk setiap kelas. Output layer menggunakan aktivasi softmax 
-            yang mengubah nilai menjadi probabilitas (total 100%).
-            """)
-        else:
-            st.write("⚠️ Probabilitas ini TIDAK RELIABLE karena model belum dilatih untuk membedakan Hyena dan Cheetah!")
+        st.subheader("Probability Distribution")
+        st.write("Model gives probabilities for each class. Output layer uses softmax activation which converts values to probabilities totaling 100%." if is_trained else "These probabilities are NOT RELIABLE because model has not been trained to distinguish Hyena and Cheetah")
         
         fig_pred = go.Figure(data=[
             go.Bar(
@@ -300,8 +264,8 @@ if uploaded_file is not None:
             )
         ])
         fig_pred.update_layout(
-            xaxis_title="Kelas",
-            yaxis_title="Probabilitas (%)",
+            xaxis_title="Class",
+            yaxis_title="Probability (%)",
             height=400,
             showlegend=False
         )
@@ -309,11 +273,8 @@ if uploaded_file is not None:
         
         st.markdown("---")
         
-        st.header("Feature Extraction dari MobileNetV2")
-        st.write("""
-        MobileNetV2 mengekstrak 1280 fitur dari gambar input. Fitur-fitur ini merepresentasikan 
-        karakteristik penting yang dipelajari dari ImageNet. Mari lihat fitur-fitur yang paling penting.
-        """)
+        st.header("Feature Extraction from MobileNetV2")
+        st.write("MobileNetV2 extracts 1280 features from input images. These features represent important characteristics learned from ImageNet. See the most important features.")
         
         feature_extractor = tf.keras.Model(
             inputs=model.input,
@@ -321,8 +282,8 @@ if uploaded_file is not None:
         )
         features = feature_extractor.predict(img_input, verbose=0)
         
-        st.write(f"**Shape fitur yang diekstrak:** {features.shape}")
-        st.caption("(1, 1280) berarti 1280 fitur untuk 1 gambar")
+        st.write(f"**Extracted feature shape:** {features.shape}")
+        st.caption("(1, 1280) means 1280 features for 1 image")
         
         feature_values = features[0]
         top_indices = np.argsort(np.abs(feature_values))[-30:][::-1]
@@ -337,68 +298,47 @@ if uploaded_file is not None:
             )
         ])
         fig_feat.update_layout(
-            title="Top 30 Fitur Terpenting (Berdasarkan Magnitude)",
-            xaxis_title="Index Fitur",
-            yaxis_title="Nilai Absolut",
+            title="Top 30 Most Important Features (By Magnitude)",
+            xaxis_title="Feature Index",
+            yaxis_title="Absolute Value",
             height=400,
             showlegend=False
         )
         st.plotly_chart(fig_feat, use_column_width=True)
         
         if is_trained:
-            st.write("""
-            Fitur dengan magnitude besar (positif atau negatif) memiliki pengaruh lebih kuat 
-            dalam menentukan klasifikasi akhir antara Cheetah dan Hyena.
-            """)
+            st.write("Features with large magnitude positive or negative have stronger influence in determining final classification between Cheetah and Hyena.")
         else:
-            st.warning("""
-            ⚠️ Fitur-fitur ini adalah hasil dari ImageNet pre-training.
-            Setelah fine-tuning, fitur-fitur ini akan disesuaikan untuk membedakan Cheetah dan Hyena.
-            """)
+            st.warning("These features are from ImageNet pre-training. After fine-tuning these features will be adjusted to distinguish Cheetah and Hyena.")
         
         st.markdown("---")
         
-        st.header("Proses Transfer Learning")
+        st.header("Transfer Learning Process")
         st.write("""
-        Berikut adalah alur lengkap bagaimana gambar Anda diproses:
+        Complete flow of how your image is processed:
         
-        **Langkah 1: Input Processing**
-        - Gambar diubah ke 224x224 pixels
-        - Preprocessing khusus MobileNetV2 (bukan hanya /255!)
-        - Normalisasi: mean subtraction dan scaling
+        Step 1: Input Processing - Image resized to 224x224 pixels, Special MobileNetV2 preprocessing not just division by 255, Normalization with mean subtraction and scaling
         
-        **Langkah 2: Feature Extraction (MobileNetV2)**
-        - Gambar melewati 53 convolutional layers
-        - Menghasilkan feature maps 7x7x1280
-        - Mengekstrak fitur dari simple ke complex
-        - Menggunakan depthwise separable convolutions
+        Step 2: Feature Extraction MobileNetV2 - Image goes through 53 convolutional layers, Produces feature maps 7x7x1280, Extracts features from simple to complex, Uses depthwise separable convolutions
         
-        **Langkah 3: Global Average Pooling**
-        - Feature maps 7x7x1280 dirata-ratakan
-        - Menghasilkan vector 1280 fitur
-        - Mengurangi overfitting
+        Step 3: Global Average Pooling - Feature maps 7x7x1280 averaged, Produces vector of 1280 features, Reduces overfitting
         
-        **Langkah 4: Dense Classification**
-        - 1280 fitur → 128 neurons (dengan ReLU)
-        - Dropout 50% untuk regularisasi
-        - 128 neurons → 2 outputs (Cheetah, Hyena)
+        Step 4: Dense Classification - 1280 features to 128 neurons with ReLU, Dropout 50% for regularization, 128 neurons to 2 outputs Cheetah and Hyena
         
-        **Langkah 5: Softmax**
-        - Mengubah output menjadi probabilitas
-        - Prediksi = kelas dengan probabilitas tertinggi
+        Step 5: Softmax - Converts output to probabilities, Prediction equals class with highest probability
         """)
         
         st.markdown("---")
         
-        st.header("Visualisasi Arsitektur")
+        st.header("Architecture Visualization")
         
         layers_info = [
-            {"name": "Input Image", "size": "224x224x3", "params": "0", "desc": "RGB Image with MobileNetV2 preprocessing"},
-            {"name": "MobileNetV2 Base", "size": "7x7x1280", "params": "2.2M", "desc": "Feature Extraction (frozen)"},
-            {"name": "Global Avg Pooling", "size": "1280", "params": "0", "desc": "Spatial dimensions reduction"},
+            {"name": "Input Image", "size": "224x224x3", "params": "0", "desc": "RGB with MobileNetV2 preprocessing"},
+            {"name": "MobileNetV2 Base", "size": "7x7x1280", "params": "2.2M", "desc": "Feature Extraction frozen"},
+            {"name": "Global Avg Pooling", "size": "1280", "params": "0", "desc": "Spatial dimension reduction"},
             {"name": "Dense + ReLU", "size": "128", "params": "163K", "desc": "Feature combination"},
-            {"name": "Dropout (0.5)", "size": "128", "params": "0", "desc": "Regularization"},
-            {"name": "Output + Softmax", "size": "2", "params": "258", "desc": "Classification (Cheetah, Hyena)"}
+            {"name": "Dropout 0.5", "size": "128", "params": "0", "desc": "Regularization"},
+            {"name": "Output + Softmax", "size": "2", "params": "258", "desc": "Classification Cheetah Hyena"}
         ]
         
         for i, layer in enumerate(layers_info):
@@ -417,69 +357,37 @@ if uploaded_file is not None:
         
         st.markdown("---")
         
-        st.header("Kenapa MobileNetV2 Efektif?")
+        st.header("Why is MobileNetV2 Effective?")
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("Depthwise Separable Convolution")
-            st.write("""
-            MobileNetV2 menggunakan teknik khusus yang memisahkan:
-            - **Depthwise Convolution**: Proses setiap channel secara terpisah
-            - **Pointwise Convolution**: Kombinasikan channel dengan 1x1 filter
-            
-            Hasil: 8-9x lebih sedikit parameter dibanding CNN biasa
-            """)
+            st.write("MobileNetV2 uses special technique that separates: Depthwise Convolution processes each channel separately, Pointwise Convolution combines channels with 1x1 filter. Result: 8-9x fewer parameters than regular CNN")
         
         with col2:
             st.subheader("Inverted Residual Blocks")
-            st.write("""
-            Struktur unik yang:
-            - Ekspansi fitur dengan 1x1 conv
-            - Depthwise 3x3 conv untuk spatial features
-            - Proyeksi linear untuk output
-            
-            Hasil: Efisien untuk mobile dan embedded devices
-            """)
+            st.write("Unique structure that: Expands features with 1x1 conv, Depthwise 3x3 conv for spatial features, Linear projection for output. Result: Efficient for mobile and embedded devices")
         
+        st.markdown("---")
         
 
 else:
-    st.info("Silakan upload gambar Cheetah atau Hyena untuk memulai prediksi dan melihat visualisasi")
+    st.info("Please upload Cheetah or Hyena image to start prediction and see visualizations")
     
     st.markdown("---")
     
-    st.header("Perbandingan: CNN vs Transfer Learning")
+    st.header("Comparison: CNN vs Transfer Learning")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("CNN dari Nol")
-        st.write("""
-        **Keuntungan:**
-        - Kontrol penuh atas arsitektur
-        - Dioptimasi untuk dataset spesifik
-        
-        **Kekurangan:**
-        - Butuh dataset besar (>10,000 gambar)
-        - Training lama (berjam-jam sampai berhari-hari)
-        - Butuh resource komputasi besar
-        - Rawan overfitting pada dataset kecil
-        """)
+        st.subheader("CNN from Scratch")
+        st.write("Advantages: Full control over architecture, Optimized for specific dataset. Disadvantages: Needs large dataset over 10000 images, Long training hours to days, Requires large computational resources, Prone to overfitting on small datasets")
     
     with col2:
         st.subheader("Transfer Learning")
-        st.write("""
-        **Keuntungan:**
-        - Bekerja dengan dataset kecil (<1,000 gambar)
-        - Training cepat (menit sampai jam)
-        - Resource komputasi lebih sedikit
-        - Akurasi tinggi dengan data minimal
-        
-        **Kekurangan:**
-        - Terbatas pada domain yang mirip
-        - Ukuran model lebih besar
-        """)
+        st.write("Advantages: Works with small datasets less than 1000 images, Fast training minutes to hours, Less computational resources, High accuracy with minimal data. Disadvantages: Limited to similar domains, Larger model size")
     
     st.markdown("---")
     
@@ -489,104 +397,10 @@ else:
     
     with col1:
         st.subheader("Cheetah")
-        st.write("""
-        Karakteristik visual:
-        - Bintik hitam bulat kecil
-        - Garis hitam dari mata ke mulut (tear mark)
-        - Tubuh lebih ramping dan atletis
-        - Warna coklat keemasan terang
-        """)
+        st.write("Visual characteristics: Small round black spots, Black line from eyes to mouth tear mark, Slimmer and more athletic body, Bright golden brown color")
     
     with col2:
         st.subheader("Hyena")
-        st.write("""
-        Karakteristik visual:
-        - Bintik tidak teratur atau garis
-        - Tidak ada tear mark
-        - Tubuh lebih besar dan kokoh
-        - Warna lebih gelap, coklat keabuan
-        """)
+        st.write("Visual characteristics: Irregular spots or stripes, No tear mark, Larger and more robust body, Darker color grayish brown")
     
-    st.write("""
-    Model MobileNetV2 yang sudah dilatih dapat mengenali perbedaan subtle ini 
-    karena sudah memiliki knowledge tentang tekstur, pola, dan bentuk dari training ImageNet.
-    """)
-st.write("""
-**Transfer Learning** adalah teknik machine learning dimana kita menggunakan model yang sudah dilatih pada dataset besar 
-(seperti ImageNet dengan 14 juta gambar) dan mengadaptasinya untuk task baru dengan dataset lebih kecil.
-
-**Keuntungan:**
-- Tidak perlu melatih model dari nol
-- Lebih cepat dan efisien
-- Bekerja baik dengan dataset kecil
-- Memanfaatkan knowledge yang sudah dipelajari
-""")
-
-st.markdown("---")
-
-st.header("MobileNetV2 Pre-trained pada ImageNet")
-st.write("""
-**MobileNetV2** adalah model yang sudah dilatih untuk mengenali 1000 kategori objek dari dataset ImageNet.
-Model ini telah belajar mengenali:
-- Fitur dasar: Garis, tepi, warna, tekstur
-- Fitur menengah: Bentuk, pola
-- Fitur kompleks: Bagian objek, kombinasi bentuk
-
-Kita akan menggunakan knowledge ini untuk membedakan Cheetah dan Hyena.
-""")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.info("""
-    **Layer yang Di-freeze (Tidak Dilatih):**
-    - Base MobileNetV2
-    - Sudah bisa ekstrak fitur umum
-    - Parameter: 2.2 juta
-    """)
-
-with col2:
-    if is_trained:
-        st.success("""
-        **Layer yang Dilatih:**
-        - Global Average Pooling
-        - Dense Layer (128 neurons)
-        - Output Layer (2 classes)
-        - Model SUDAH dilatih!
-        """)
-    else:
-        st.warning("""
-        **Layer yang Perlu Dilatih:**
-        - Global Average Pooling
-        - Dense Layer (128 neurons)
-        - Output Layer (2 classes)
-        - ⚠️ Model BELUM dilatih!
-        """)
-
-st.markdown("---")
-
-if not is_trained:
-    st.warning("""
-    ### Cara Mendapatkan Model yang Sudah Di-train:
-    
-    1. Buka notebook **MobileNetv2.ipynb** di Google Colab
-    2. Jalankan semua cell sampai training selesai
-    3. File 'best_transfer_model.keras' akan otomatis ter-save
-    4. Download file tersebut dengan menambahkan cell:
-    ```python
-    from google.colab import files
-    files.download('best_transfer_model.keras')
-    ```
-    5. Upload file ke folder tempat app.py berada
-    6. Restart aplikasi Streamlit
-    """)
-    
-    st.info("""
-    **Untuk saat ini, aplikasi tetap bisa digunakan untuk mempelajari:**
-    - Transfer Learning concept
-    - RGB analysis dan preprocessing
-    - Feature extraction dari MobileNetV2
-    - Arsitektur model
-    
-    Namun prediksi akan tidak akurat karena model belum di-fine-tune untuk Hyena/Cheetah.
-    """)
+    st.write("Trained MobileNetV2 model can recognize these subtle differences because it already has knowledge about textures patterns and shapes from ImageNet training.")

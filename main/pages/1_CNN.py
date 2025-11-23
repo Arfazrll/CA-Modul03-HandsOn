@@ -3,64 +3,30 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 import plotly.graph_objects as go
-import plotly.express as px
-import cv2
 from scipy.ndimage import convolve
-import requests
-import zipfile
 import os
 
-st.set_page_config(page_title="CNN Classification", page_icon="🔷", layout="wide")
+st.set_page_config(page_title="CNN Classification", layout="wide")
 
-st.markdown("""
-    <style>
-        .prediction-box {
-            padding: 2rem;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-align: center;
-            margin: 1rem 0;
-        }
-        .metric-card {
-            padding: 1.5rem;
-            border-radius: 8px;
-            background: #f8f9fa;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-    </style>
-""", unsafe_allow_html=True)
+st.title("CNN Classification: Rock Paper Scissors")
+st.write("Memahami bagaimana Convolutional Neural Network memproses dan mengklasifikasi gambar")
 
 @st.cache_resource
-def download_and_extract_dataset():
-    url = "https://github.com/Arfazrll/CA-Modul03-HandsOn/releases/download/ConvolutionalNeuralNetwork/rockpaperscissors.zip"
-    zip_path = "rockpaperscissors.zip"
-    extract_path = "data"
+def load_model():
+    model_path = 'rock_paper_scissors_model.h5'
     
-    if not os.path.exists(extract_path):
-        if not os.path.exists(zip_path):
-            with st.spinner("Downloading dataset..."):
-                response = requests.get(url, stream=True)
-                with open(zip_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-        
-        with st.spinner("Extracting dataset..."):
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_path)
+    if os.path.exists(model_path):
+        try:
+            model = tf.keras.models.load_model(model_path)
+            st.success("Model berhasil di-load dari file!")
+            return model, True
+        except:
+            st.warning("Model file ada tapi gagal di-load. Menggunakan model tanpa training.")
     
-    return extract_path
-
-@st.cache_resource
-def build_cnn_model():
     model = tf.keras.Sequential([
         tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
         tf.keras.layers.MaxPooling2D(2,2),
         tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
         tf.keras.layers.MaxPooling2D(2,2),
         tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
         tf.keras.layers.MaxPooling2D(2,2),
@@ -69,288 +35,326 @@ def build_cnn_model():
         tf.keras.layers.Dense(512, activation='relu'),
         tf.keras.layers.Dense(3, activation='softmax')
     ])
-    return model
+    
+    st.error("""
+    ⚠️ MODEL BELUM DI-TRAIN!
+    
+    Model ini hanya arsitektur kosong. Untuk prediksi yang akurat:
+    1. Train model di Colab menggunakan notebook ClassificationCNN.ipynb
+    2. Save model dengan: model.save('rock_paper_scissors_model.h5')
+    3. Upload file 'rock_paper_scissors_model.h5' ke folder aplikasi ini
+    """)
+    
+    return model, False
 
-def visualize_rgb_channels(image):
-    img_array = np.array(image)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Heatmap(z=img_array[:,:,0], colorscale='Reds', name='Red', showscale=False))
-    
-    return fig
+def preprocess_image(image):
+    img_resized = image.resize((150, 150))
+    img_array = np.array(img_resized)
+    img_array = img_array / 255.0
+    return img_resized, img_array
 
-def visualize_convolution(image, kernel_type='edge_detection'):
-    img_array = np.array(image.convert('L'))
-    
-    kernels = {
-        'edge_detection': np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]),
-        'sharpen': np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]),
-        'blur': np.ones((3, 3)) / 9,
-        'vertical_edge': np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]),
-        'horizontal_edge': np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
-    }
-    
-    kernel = kernels[kernel_type]
-    convolved = convolve(img_array, kernel)
+def apply_convolution(image, kernel):
+    img_gray = np.array(image.convert('L'))
+    convolved = convolve(img_gray, kernel, mode='constant')
     convolved = np.clip(convolved, 0, 255).astype(np.uint8)
-    
-    return convolved, kernel
+    return convolved
 
-def create_architecture_flow():
-    layers = [
-        {"name": "Input\n150x150x3", "neurons": 150, "color": "#667eea"},
-        {"name": "Conv2D\n32 filters", "neurons": 148, "color": "#764ba2"},
-        {"name": "MaxPool\n74x74x32", "neurons": 74, "color": "#f093fb"},
-        {"name": "Conv2D\n64 filters", "neurons": 72, "color": "#4facfe"},
-        {"name": "MaxPool\n36x36x64", "neurons": 36, "color": "#00f2fe"},
-        {"name": "Conv2D\n128 filters", "neurons": 34, "color": "#43e97b"},
-        {"name": "MaxPool\n17x17x128", "neurons": 17, "color": "#38f9d7"},
-        {"name": "Flatten\n36992", "neurons": 100, "color": "#fa709a"},
-        {"name": "Dense\n512", "neurons": 80, "color": "#fee140"},
-        {"name": "Output\n3 classes", "neurons": 3, "color": "#30cfd0"}
-    ]
-    
-    fig = go.Figure()
-    
-    for i, layer in enumerate(layers):
-        x_pos = i * 1.5
-        fig.add_trace(go.Scatter(
-            x=[x_pos] * layer["neurons"],
-            y=np.linspace(0, 10, layer["neurons"]),
-            mode='markers',
-            marker=dict(size=8, color=layer["color"], opacity=0.6),
-            name=layer["name"],
-            showlegend=True
-        ))
-        
-        if i < len(layers) - 1:
-            for start_y in np.linspace(0, 10, min(5, layer["neurons"])):
-                for end_y in np.linspace(0, 10, min(5, layers[i+1]["neurons"])):
-                    fig.add_trace(go.Scatter(
-                        x=[x_pos, x_pos + 1.5],
-                        y=[start_y, end_y],
-                        mode='lines',
-                        line=dict(color='lightgray', width=0.5),
-                        showlegend=False,
-                        hoverinfo='skip'
-                    ))
-    
-    fig.update_layout(
-        title="CNN Architecture Visualization",
-        showlegend=True,
-        height=500,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        plot_bgcolor='white'
-    )
-    
-    return fig
-
-st.markdown('<h1 style="text-align: center; color: #667eea;">🔷 CNN Classification</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #666;">Rock Paper Scissors Detection</p>', unsafe_allow_html=True)
-
-st.markdown("---")
-
-try:
-    data_path = download_and_extract_dataset()
-except Exception as e:
-    st.error(f"Error downloading dataset: {str(e)}")
-    data_path = None
-
-model = build_cnn_model()
-
+model, is_trained = load_model()
 class_names = ['paper', 'rock', 'scissors']
 
-col1, col2 = st.columns([1, 1])
+st.markdown("---")
 
-with col1:
-    st.markdown("### 📤 Upload Image")
-    uploaded_file = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], label_visibility="collapsed")
+if not is_trained:
+    st.warning("""
+    ### Cara Mendapatkan Model yang Sudah Di-train:
     
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_container_width=True)
-        
-        st.markdown("### 🎨 RGB Channel Visualization")
-        img_array = np.array(image.resize((150, 150)))
-        
-        fig_rgb = go.Figure()
-        
-        fig_rgb.add_trace(go.Heatmap(
-            z=img_array[:,:,0][::-1],
-            colorscale='Reds',
-            name='Red Channel',
-            showscale=False
-        ))
-        
-        fig_rgb.update_layout(
-            title="Red Channel",
-            height=200,
-            margin=dict(l=0, r=0, t=30, b=0)
-        )
-        st.plotly_chart(fig_rgb, use_container_width=True)
-        
-        fig_rgb_g = go.Figure()
-        fig_rgb_g.add_trace(go.Heatmap(
-            z=img_array[:,:,1][::-1],
-            colorscale='Greens',
-            showscale=False
-        ))
-        fig_rgb_g.update_layout(
-            title="Green Channel",
-            height=200,
-            margin=dict(l=0, r=0, t=30, b=0)
-        )
-        st.plotly_chart(fig_rgb_g, use_container_width=True)
-        
-        fig_rgb_b = go.Figure()
-        fig_rgb_b.add_trace(go.Heatmap(
-            z=img_array[:,:,2][::-1],
-            colorscale='Blues',
-            showscale=False
-        ))
-        fig_rgb_b.update_layout(
-            title="Blue Channel",
-            height=200,
-            margin=dict(l=0, r=0, t=30, b=0)
-        )
-        st.plotly_chart(fig_rgb_b, use_container_width=True)
+    1. Buka notebook **ClassificationCNN.ipynb** di Google Colab
+    2. Jalankan semua cell sampai training selesai
+    3. Tambahkan cell baru di akhir dengan kode:
+    ```python
+    model.save('rock_paper_scissors_model.h5')
+    files.download('rock_paper_scissors_model.h5')
+    ```
+    4. Download file yang muncul
+    5. Upload file tersebut ke folder tempat app.py berada
+    6. Restart aplikasi Streamlit
+    """)
+    
+    st.info("""
+    **Untuk saat ini, aplikasi tetap bisa digunakan untuk mempelajari:**
+    - RGB Channels
+    - Convolution operations  
+    - Feature maps visualization
+    - Arsitektur CNN
+    
+    Namun prediksi akan random karena model belum di-train.
+    """)
 
-with col2:
-    if uploaded_file is not None:
-        st.markdown("### 🔍 Convolution Operations")
+st.markdown("---")
+
+st.header("Langkah 1: Upload Gambar")
+uploaded_file = st.file_uploader("Pilih gambar Rock, Paper, atau Scissors", type=['jpg', 'jpeg', 'png'])
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Gambar Original")
+        st.image(image, use_column_width=True)
+    
+    with col2:
+        st.subheader("Gambar Setelah Preprocessing")
+        img_resized, img_array = preprocess_image(image)
+        st.image(img_resized, use_column_width=True)
+        st.caption(f"Ukuran: 150x150 pixels | Normalisasi: 0-1 | Range: [{img_array.min():.3f}, {img_array.max():.3f}]")
+    
+    st.markdown("---")
+    
+    st.header("Langkah 2: Memahami Input - RGB Channels")
+    st.write("""
+    Gambar digital terdiri dari 3 channel warna: **Red (Merah)**, **Green (Hijau)**, dan **Blue (Biru)**.
+    Setiap channel adalah matrix dengan nilai intensitas 0-255 (setelah normalisasi menjadi 0-1).
+    CNN memproses ketiga channel ini secara bersamaan untuk mengekstrak fitur.
+    """)
+    
+    img_display = np.array(img_resized)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("Red Channel")
+        fig_r = go.Figure(data=go.Heatmap(
+            z=img_display[:,:,0][::-1],
+            colorscale='Reds',
+            showscale=True
+        ))
+        fig_r.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig_r, use_column_width=True)
+    
+    with col2:
+        st.subheader("Green Channel")
+        fig_g = go.Figure(data=go.Heatmap(
+            z=img_display[:,:,1][::-1],
+            colorscale='Greens',
+            showscale=True
+        ))
+        fig_g.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig_g, use_column_width=True)
+    
+    with col3:
+        st.subheader("Blue Channel")
+        fig_b = go.Figure(data=go.Heatmap(
+            z=img_display[:,:,2][::-1],
+            colorscale='Blues',
+            showscale=True
+        ))
+        fig_b.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig_b, use_column_width=True)
+    
+    st.markdown("---")
+    
+    st.header("Langkah 3: Convolution Operation")
+    st.write("""
+    **Convolution** adalah operasi matematika yang menggunakan filter (kernel) untuk mengekstrak fitur dari gambar.
+    Filter bergerak melintasi gambar dan melakukan operasi perkalian element-wise, kemudian menjumlahkan hasilnya.
+    Ini membantu mendeteksi pola seperti garis, tepi, tekstur, dan bentuk.
+    """)
+    
+    kernel_options = {
+        'Edge Detection (Deteksi Tepi)': np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]),
+        'Sharpen (Mempertajam)': np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]),
+        'Blur (Mengaburkan)': np.ones((3, 3)) / 9,
+        'Vertical Edge (Tepi Vertikal)': np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]),
+        'Horizontal Edge (Tepi Horizontal)': np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    }
+    
+    selected_kernel = st.selectbox("Pilih jenis filter untuk melihat efeknya:", list(kernel_options.keys()))
+    kernel = kernel_options[selected_kernel]
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Kernel/Filter Matrix (3x3)")
+        fig_kernel = go.Figure(data=go.Heatmap(
+            z=kernel,
+            colorscale='RdBu',
+            text=kernel,
+            texttemplate='%{text:.2f}',
+            textfont={"size": 14},
+            showscale=False
+        ))
+        fig_kernel.update_layout(height=250, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig_kernel, use_column_width=True)
+        st.caption("Filter 3x3 yang akan bergerak melintasi gambar")
+    
+    with col2:
+        st.subheader("Hasil Convolution")
+        convolved = apply_convolution(img_resized, kernel)
+        st.image(convolved, use_column_width=True)
+        st.caption("Gambar setelah diproses dengan filter yang dipilih")
+    
+    st.markdown("---")
+    
+    st.header("Langkah 4: Prediksi dan Klasifikasi")
+    
+    if is_trained:
+        button_label = "Jalankan Prediksi"
+    else:
+        button_label = "Coba Prediksi (Model Belum Di-train)"
+    
+    if st.button(button_label, type="primary"):
+        with st.spinner("Memproses gambar melalui CNN..."):
+            img_input = np.expand_dims(img_array, axis=0)
+            predictions = model.predict(img_input, verbose=0)
+            predicted_idx = np.argmax(predictions[0])
+            predicted_class = class_names[predicted_idx]
+            confidence = predictions[0][predicted_idx] * 100
         
-        kernel_type = st.selectbox(
-            "Select Kernel Type",
-            ['edge_detection', 'sharpen', 'blur', 'vertical_edge', 'horizontal_edge']
-        )
+        if is_trained:
+            st.success(f"Prediksi: **{predicted_class.upper()}** dengan confidence **{confidence:.2f}%**")
+        else:
+            st.warning(f"Prediksi (RANDOM): **{predicted_class.upper()}** - Confidence: {confidence:.2f}%")
+            st.error("⚠️ Prediksi ini TIDAK AKURAT karena model belum di-train! Angka ini random.")
         
-        convolved_img, kernel = visualize_convolution(image, kernel_type)
+        st.subheader("Distribusi Probabilitas")
+        if is_trained:
+            st.write("Model memberikan probabilitas untuk setiap kelas. Kelas dengan probabilitas tertinggi adalah hasil prediksi.")
+        else:
+            st.write("⚠️ Probabilitas ini RANDOM karena model belum pernah belajar apa-apa!")
         
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            st.markdown("**Kernel Matrix**")
-            kernel_df = kernel
-            fig_kernel = go.Figure(data=[go.Heatmap(
-                z=kernel,
-                colorscale='RdBu',
-                text=kernel,
-                texttemplate='%{text:.1f}',
-                textfont={"size": 16}
-            )])
-            fig_kernel.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig_kernel, use_container_width=True)
-        
-        with col_b:
-            st.markdown("**Convolution Result**")
-            st.image(convolved_img, use_container_width=True)
-        
-        st.markdown("### 🎯 Prediction")
-        
-        if st.button("Predict Image", type="primary", use_container_width=True):
-            img_resized = image.resize((150, 150))
-            img_array = np.array(img_resized) / 255.0
-            img_array = np.expand_dims(img_array, axis=0)
-            
-            with st.spinner("Processing..."):
-                predictions = model.predict(img_array, verbose=0)
-                predicted_class = class_names[np.argmax(predictions[0])]
-                confidence = np.max(predictions[0]) * 100
-            
-            st.markdown(f"""
-                <div class="prediction-box">
-                    <h2>Prediction: {predicted_class.upper()}</h2>
-                    <h3>Confidence: {confidence:.2f}%</h3>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("### 📊 Confidence Distribution")
-            
-            fig_pred = go.Figure(data=[
-                go.Bar(
-                    x=class_names,
-                    y=predictions[0] * 100,
-                    marker_color=['#667eea', '#764ba2', '#f093fb'],
-                    text=[f'{val:.2f}%' for val in predictions[0] * 100],
-                    textposition='auto',
-                )
-            ])
-            
-            fig_pred.update_layout(
-                title="Prediction Probabilities",
-                xaxis_title="Class",
-                yaxis_title="Probability (%)",
-                height=400,
-                showlegend=False
+        fig_pred = go.Figure(data=[
+            go.Bar(
+                x=class_names,
+                y=predictions[0] * 100,
+                marker_color=['#3498db', '#e74c3c', '#2ecc71'],
+                text=[f'{val:.2f}%' for val in predictions[0] * 100],
+                textposition='auto'
             )
+        ])
+        fig_pred.update_layout(
+            xaxis_title="Kelas",
+            yaxis_title="Probabilitas (%)",
+            height=400,
+            showlegend=False
+        )
+        st.plotly_chart(fig_pred, use_column_width=True)
+        
+        st.markdown("---")
+        
+        st.header("Langkah 5: Visualisasi Feature Maps")
+        st.write("""
+        Feature maps adalah output dari setiap layer convolution. Mereka menunjukkan fitur apa yang dideteksi oleh model.
+        Layer awal mendeteksi fitur sederhana (garis, tepi), layer dalam mendeteksi fitur kompleks (bentuk, pola).
+        """)
+        
+        layer_outputs = []
+        layer_names = []
+        
+        temp_input = tf.keras.Input(shape=(150, 150, 3))
+        temp_x = temp_input
+        
+        for layer in model.layers[:3]:
+            temp_x = layer(temp_x)
+            if 'conv' in layer.name:
+                layer_outputs.append(temp_x)
+                layer_names.append(layer.name)
+        
+        feature_model = tf.keras.Model(inputs=temp_input, outputs=layer_outputs)
+        features = feature_model.predict(img_input, verbose=0)
+        
+        for idx, (feature_map, name) in enumerate(zip(features, layer_names)):
+            st.subheader(f"Layer: {name}")
+            st.caption(f"Shape: {feature_map.shape}")
             
-            st.plotly_chart(fig_pred, use_container_width=True)
+            num_filters = min(8, feature_map.shape[-1])
+            cols = st.columns(4)
             
-            st.markdown("### 🧠 Feature Extraction Process")
-            
-            layer_outputs = []
-            layer_names = []
-            
-            for layer in model.layers[:4]:
-                if 'conv' in layer.name or 'pool' in layer.name:
-                    intermediate_model = tf.keras.Model(
-                        inputs=model.input,
-                        outputs=layer.output
-                    )
-                    layer_output = intermediate_model.predict(img_array, verbose=0)
-                    layer_outputs.append(layer_output)
-                    layer_names.append(layer.name)
-            
-            cols = st.columns(len(layer_outputs))
-            
-            for idx, (col, output, name) in enumerate(zip(cols, layer_outputs, layer_names)):
-                with col:
-                    st.markdown(f"**{name}**")
-                    feature_map = output[0, :, :, 0]
-                    
-                    fig_fm = go.Figure(data=[go.Heatmap(
-                        z=feature_map,
+            for i in range(num_filters):
+                with cols[i % 4]:
+                    fmap = feature_map[0, :, :, i]
+                    fig_fm = go.Figure(data=go.Heatmap(
+                        z=fmap,
                         colorscale='Viridis',
                         showscale=False
-                    )])
+                    ))
                     fig_fm.update_layout(
-                        height=200,
-                        margin=dict(l=0, r=0, t=0, b=0)
+                        height=150,
+                        margin=dict(l=0, r=0, t=20, b=0),
+                        title=f"Filter {i+1}"
                     )
-                    st.plotly_chart(fig_fm, use_container_width=True)
+                    st.plotly_chart(fig_fm, use_column_width=True)
+        
+        if not is_trained:
+            st.warning("⚠️ Feature maps ini juga random karena model belum di-train.")
+        
+        st.markdown("---")
+        
+        st.header("Arsitektur CNN")
+        st.write("""
+        Berikut adalah struktur lengkap CNN yang digunakan:
+        
+        1. **Input Layer**: 150x150x3 (RGB image)
+        2. **Conv2D Layer 1**: 32 filters, 3x3 kernel, ReLU activation
+        3. **MaxPooling2D**: 2x2, reduces spatial dimensions
+        4. **Conv2D Layer 2**: 64 filters, 3x3 kernel, ReLU activation
+        5. **MaxPooling2D**: 2x2, reduces spatial dimensions
+        6. **Conv2D Layer 3**: 128 filters, 3x3 kernel, ReLU activation
+        7. **MaxPooling2D**: 2x2, reduces spatial dimensions
+        8. **Flatten**: Convert 3D to 1D vector
+        9. **Dropout**: 0.5 rate for regularization
+        10. **Dense Layer**: 512 neurons, ReLU activation
+        11. **Output Layer**: 3 neurons (Rock, Paper, Scissors), Softmax activation
+        """)
+        
+        st.info("""
+        **Cara Kerja CNN:**
+        - **Convolution**: Mengekstrak fitur lokal dari gambar
+        - **Pooling**: Mengurangi dimensi dan meningkatkan invariance
+        - **Activation (ReLU)**: Menambahkan non-linearity
+        - **Flatten**: Mengubah feature maps menjadi vector
+        - **Dense**: Melakukan klasifikasi berdasarkan fitur yang diekstrak
+        - **Softmax**: Mengubah output menjadi probabilitas (sum=100%)
+        """)
 
-st.markdown("---")
-
-st.markdown("### 🏗️ Network Architecture")
-arch_fig = create_architecture_flow()
-st.plotly_chart(arch_fig, use_container_width=True)
-
-st.markdown("---")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("""
-        <div class="metric-card">
-            <h3 style="color: #667eea;">32-128</h3>
-            <p>Convolutional Filters</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown("""
-        <div class="metric-card">
-            <h3 style="color: #764ba2;">150x150</h3>
-            <p>Input Image Size</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown("""
-        <div class="metric-card">
-            <h3 style="color: #f093fb;">3 Classes</h3>
-            <p>Rock, Paper, Scissors</p>
-        </div>
-    """, unsafe_allow_html=True)
+else:
+    st.info("Silakan upload gambar untuk memulai proses klasifikasi dan melihat visualisasi")
+    
+    st.markdown("---")
+    
+    st.header("Tentang CNN")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Apa itu CNN?")
+        st.write("""
+        **Convolutional Neural Network (CNN)** adalah jenis neural network yang dirancang khusus untuk memproses data grid seperti gambar.
+        
+        CNN terdiri dari beberapa layer:
+        - **Convolutional Layer**: Mengekstrak fitur dari gambar
+        - **Pooling Layer**: Mengurangi dimensi dan komputasi
+        - **Fully Connected Layer**: Melakukan klasifikasi
+        """)
+    
+    with col2:
+        st.subheader("Mengapa CNN Efektif?")
+        st.write("""
+        CNN efektif untuk vision tasks karena:
+        - **Parameter Sharing**: Filter yang sama digunakan di seluruh gambar
+        - **Spatial Hierarchy**: Mendeteksi fitur dari sederhana ke kompleks
+        - **Translation Invariance**: Dapat mengenali objek di posisi berbeda
+        """)
+    
+    st.markdown("---")
+    
+    st.subheader("Dataset: Rock Paper Scissors")
+    st.write("""
+    Model ini dilatih untuk mengklasifikasi 3 gesture tangan:
+    - **Rock (Batu)**: Tangan mengepal
+    - **Paper (Kertas)**: Tangan terbuka
+    - **Scissors (Gunting)**: Dua jari terentang
+    
+    Model menggunakan arsitektur CNN custom dengan 3 convolutional layers dan dapat membedakan ketiga kelas dengan akurat setelah di-train.
+    """)
